@@ -1,0 +1,231 @@
+# docker/Dockerfile
+
+# 베이스 이미지 - CUDA 지원
+FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
+
+# 환경 변수 설정
+ENV PYTHONUNBUFFERED=1
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Asia/Seoul
+
+# 작업 디렉토리 설정
+WORKDIR /app
+
+# 시스템 패키지 설치
+RUN apt-get update && apt-get install -y \
+    python3.10 \
+    python3.10-dev \
+    python3-pip \
+    build-essential \
+    cmake \
+    git \
+    wget \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libgtk-3-0 \
+    libnotify4 \
+    libsdl2-2.0-0 \
+    libwebp7 \
+    libtiff5 \
+    libopenexr25 \
+    libgstreamer-plugins-base1.0-0 \
+    libavcodec58 \
+    libavformat58 \
+    libswscale5 \
+    libv4l-0 \
+    libxvidcore4 \
+    libx264-155 \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python 기본 설정
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1
+RUN update-alternatives --install /usr/bin/pip pip /usr/bin/pip3 1
+
+# pip 업그레이드
+RUN pip install --upgrade pip setuptools wheel
+
+# 의존성 파일 복사
+COPY requirements/ /app/requirements/
+COPY pyproject.toml /app/
+COPY setup.py /app/
+
+# Python 패키지 설치 (캐시 활용)
+RUN pip install -r requirements/base.txt
+
+# PyTorch GPU 버전 설치
+RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+
+# 소스 코드 복사
+COPY src/ /app/src/
+COPY models/ /app/models/
+COPY data/ /app/data/
+COPY scripts/ /app/scripts/
+
+# 프로젝트 설치
+RUN pip install -e .
+
+# 실행 권한 설정
+RUN chmod +x scripts/*.sh
+
+# 디렉토리 생성
+RUN mkdir -p logs output/videos output/reports output/alerts
+
+# 포트 설정 (웹 UI 사용 시)
+EXPOSE 8080
+
+# 헬스체크
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import cv2; import torch; print('Health check passed')" || exit 1
+
+# 실행 명령
+CMD ["python", "-m", "src.main"]
+
+---
+
+# docker/docker-compose.yml
+
+version: '3.8'
+
+services:
+  cctv-detector:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: cctv-danger-detection:latest
+    container_name: cctv-detector
+    
+    # GPU 지원
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    
+    # 환경 변수
+    environment:
+      - RTSP_URL=${RTSP_URL}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - CUDA_VISIBLE_DEVICES=0
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      
+    # 볼륨 마운트
+    volumes:
+      - ./logs:/app/logs
+      - ./output:/app/output
+      - ./data/zones:/app/data/zones:ro
+      - ./models:/app/models:ro
+      
+    # 네트워크
+    network_mode: host
+    
+    # 재시작 정책
+    restart: unless-stopped
+    
+    # 로깅
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # 선택사항: 모니터링 UI
+  web-ui:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.ui
+    image: cctv-detector-ui:latest
+    container_name: cctv-detector-ui
+    
+    ports:
+      - "8080:8080"
+      
+    environment:
+      - API_URL=http://localhost:8081
+      
+    depends_on:
+      - cctv-detector
+      
+    restart: unless-stopped
+
+# 네트워크 설정
+networks:
+  default:
+    driver: bridge
+
+---
+
+# docker/Dockerfile.ui (웹 UI용 - 선택사항)
+
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# 웹 프레임워크 설치
+RUN pip install fastapi uvicorn streamlit
+
+# UI 코드 복사
+COPY src/web_ui/ /app/
+
+EXPOSE 8080
+
+CMD ["streamlit", "run", "app.py", "--server.port=8080", "--server.address=0.0.0.0"]
+
+---
+
+# docker/.dockerignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environment
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+logs/
+output/
+data/test_videos/
+data/snapshots/
+*.mp4
+*.avi
+*.mov
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+docs/
+*.md
+
+# Tests
+src/tests/
+.pytest_cache/
+.coverage
