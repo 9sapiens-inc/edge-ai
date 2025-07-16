@@ -6,10 +6,11 @@ import time
 import argparse
 import signal
 import sys
+import numpy as np
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 # 프로젝트 모듈
 from config.config import *

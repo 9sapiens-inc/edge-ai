@@ -6,9 +6,11 @@ import time
 import argparse
 import signal
 import sys
+import numpy as np
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 import threading
+from typing import Dict, List, Tuple, Optional
 
 # 프로젝트 모듈
 from config.config import *
@@ -107,7 +109,79 @@ class DangerDetectionSystem:
                 print("❌ 카메라 연결 실패")
                 return False
     
-    def process_camera_frame(self, cam_id: int, frame: np.ndarray) -> Dict:
+    def process_frame(self, frame: np.ndarray):
+        """프레임 처리 및 위험 감지"""
+        detections = {
+            'fire': [],
+            'fall': [],
+            'restricted_area': [],
+            'no_helmet': []
+        }
+        
+        # 프레임 리사이즈 (성능 향상)
+        resized = self.video_stream.resize_frame(
+            frame, 
+            VIDEO_CONFIG['resize_width'],
+            VIDEO_CONFIG['resize_height']
+        )
+        
+        # 1. 화재/연기 감지
+        if DETECTION_CONFIG['fire_detection']['enabled']:
+            fire_detections = self.fire_detector.detect(resized)
+            for det in fire_detections:
+                if det['confidence'] >= DETECTION_CONFIG['fire_detection']['min_confidence']:
+                    detections['fire'].append(det)
+                    self.alert_manager.send_alert(
+                        'fire',
+                        f"화재 또는 연기 감지됨 - {det['class_name']}",
+                        location={'x': det['bbox'][0], 'y': det['bbox'][1]},
+                        confidence=det['confidence'],
+                        cooldown=DETECTION_CONFIG['fire_detection']['alert_cooldown']
+                    )
+        
+        # 2. 낙상 감지
+        if DETECTION_CONFIG['fall_detection']['enabled']:
+            fall_detections = self.fall_detector.detect(resized)
+            for det in fall_detections:
+                if det['fall_confidence'] >= DETECTION_CONFIG['fall_detection']['min_confidence']:
+                    detections['fall'].append(det)
+                    self.alert_manager.send_alert(
+                        'fall',
+                        f"낙상 감지 - Person ID: {det.get('person_id', 'Unknown')}",
+                        location={'x': det['bbox'][0], 'y': det['bbox'][1]},
+                        confidence=det['fall_confidence'],
+                        cooldown=DETECTION_CONFIG['fall_detection']['alert_cooldown']
+                    )
+        
+        # 3. 제한구역 침입 감지
+        if DETECTION_CONFIG['restricted_area']['enabled']:
+            intrusion_detections = self.safety_detector.detect_restricted_area_intrusion(resized)
+            for det in intrusion_detections:
+                if det['confidence'] >= DETECTION_CONFIG['restricted_area']['min_confidence']:
+                    detections['restricted_area'].append(det)
+                    self.alert_manager.send_alert(
+                        'restricted_area',
+                        f"제한구역 침입 감지 - Zone {det['zone_id']+1}",
+                        location={'x': det['bbox'][0], 'y': det['bbox'][1]},
+                        confidence=det['confidence'],
+                        cooldown=DETECTION_CONFIG['restricted_area']['alert_cooldown']
+                    )
+        
+        # 4. 안전모 미착용 감지
+        if DETECTION_CONFIG['helmet_detection']['enabled']:
+            helmet_detections = self.safety_detector.detect_helmet(resized)
+            for det in helmet_detections:
+                if det['class_name'] == 'no_helmet' and det['confidence'] >= DETECTION_CONFIG['helmet_detection']['min_confidence']:
+                    detections['no_helmet'].append(det)
+                    self.alert_manager.send_alert(
+                        'no_helmet',
+                        "안전모 미착용 감지",
+                        location={'x': det['bbox'][0], 'y': det['bbox'][1]},
+                        confidence=det['confidence'],
+                        cooldown=DETECTION_CONFIG['helmet_detection']['alert_cooldown']
+                    )
+        
+        return detections, resized
         """단일 카메라 프레임 처리 (다중 카메라용)"""
         detections = {
             'fire': [],
