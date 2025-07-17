@@ -4,6 +4,9 @@ echo CCTV 위험 감지 시스템 시작
 echo ===================================
 echo.
 
+REM UTF-8 설정
+chcp 65001 > nul
+
 REM 가상환경 활성화 (있는 경우)
 if exist venv\Scripts\activate.bat (
     echo 가상환경 활성화 중...
@@ -14,6 +17,7 @@ if exist venv\Scripts\activate.bat (
 
 REM Python 경로 설정
 set PYTHONPATH=%cd%;%cd%\src
+set PYTHONIOENCODING=utf-8
 
 REM 프로그램 실행
 echo 프로그램 시작...

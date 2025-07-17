@@ -16,20 +16,34 @@ class AlertManager:
         self.active_alerts = set()
         self.lock = threading.Lock()
         
-        # 로깅 설정
+        # 로깅 설정 - UTF-8 인코딩 명시
         self._setup_logging()
         
     def _setup_logging(self):
         """로깅 설정"""
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(self.log_file),
-                logging.StreamHandler()
-            ]
-        )
-        self.logger = logging.getLogger(__name__)
+        # 기존 핸들러 제거
+        logger = logging.getLogger(__name__)
+        logger.handlers = []
+        
+        # UTF-8 인코딩으로 파일 핸들러 생성
+        file_handler = logging.FileHandler(self.log_file, encoding='utf-8')
+        file_handler.setLevel(logging.INFO)
+        
+        # 콘솔 핸들러
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        
+        # 포맷터 설정
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(formatter)
+        console_handler.setFormatter(formatter)
+        
+        # 로거 설정
+        logger.setLevel(logging.INFO)
+        logger.addHandler(file_handler)
+        logger.addHandler(console_handler)
+        
+        self.logger = logger
     
     def check_alert_cooldown(self, alert_type: str, cooldown_seconds: int) -> bool:
         """알림 쿨다운 체크"""
