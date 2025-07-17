@@ -1,8 +1,11 @@
 """
 Configuration settings for CCTV danger detection system
 """
+import torch
 
 # RTSP 스트림 설정 (다중 카메라 지원)
+# 단일 카메라: enabled를 하나만 True로 설정
+# 다중 카메라: 여러 개를 True로 설정
 CAMERAS = [
     {
         'id': 1,
@@ -15,7 +18,7 @@ CAMERAS = [
         'id': 2,
         'name': 'Camera 2',
         'url': 'rtsp://admin:P%40ssw0rd@192.168.0.25:554/Streaming/Channels/101/',
-        'enabled': True,
+        'enabled': True,  # False로 변경하면 단일 카메라 모드
         'position': (1, 0)
     },
     {
@@ -39,10 +42,10 @@ RTSP_URL = CAMERAS[0]['url']
 
 # 모델 설정
 MODEL_CONFIG = {
-    'yolo_model': 'yolov8s.pt',  # YOLOv8m 중간, 균형잡힌 선택 (n,s,m.l)
+    'yolo_model': 'yolov8n.pt',  # YOLOv8 nano 모델 (빠른 처리)
     'confidence_threshold': 0.5,
     'iou_threshold': 0.45,
-    'device': 'cuda:0',  # GPU 사용 (없으면 'cpu')
+    'device': 'cuda:0' if torch.cuda.is_available() else 'cpu',  # 자동 감지
 }
 
 # 위험 감지 설정
@@ -77,10 +80,10 @@ DETECTION_CONFIG = {
 
 # 비디오 처리 설정
 VIDEO_CONFIG = {
-    'frame_skip': 1,  # 처리할 프레임 간격
+    'frame_skip': 3,  # GPU 사용 시 2, CPU 사용 시 3-5 권장
     'resize_width': 640,
     'resize_height': 480,
-    'buffer_size': 10,
+    'buffer_size': 5,  # 버퍼 크기 줄임
     'reconnect_delay': 5,  # 재연결 대기 시간 (초)
     'multi_camera_layout': 'grid',  # 'grid' 또는 'horizontal'
     'grid_spacing': 10,  # 그리드 간격 (픽셀)

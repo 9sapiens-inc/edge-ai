@@ -1,5 +1,5 @@
 """
-CCTV 실시간 위험 감지 시스템 - 다중 카메라 버전
+CCTV 실시간 위험 감지 시스템 - 통합 버전 (단일/다중 카메라 지원)
 """
 import cv2
 import time
@@ -21,11 +21,20 @@ from models.fire_detector import FireDetector
 from models.fall_detector import FallDetector
 from models.safety_detector import SafetyDetector
 
-class MultiCameraDangerDetection:
+class DangerDetectionSystem:
     def __init__(self):
         print("="*60)
-        print("CCTV 다중 카메라 위험 감지 시스템 초기화 중...")
+        print("CCTV 위험 감지 시스템 초기화 중...")
         print("="*60)
+        
+        # 활성화된 카메라 수 확인
+        self.active_cameras = [cam for cam in CAMERAS if cam['enabled'] and cam['url']]
+        self.is_single_camera = len(self.active_cameras) == 1
+        
+        if self.is_single_camera:
+            print(f"단일 카메라 모드 - {self.active_cameras[0]['name']}")
+        else:
+            print(f"다중 카메라 모드 - {len(self.active_cameras)}대 활성화")
         
         # 컴포넌트 초기화
         self.alert_manager = AlertManager(ALERT_CONFIG['log_file'])
@@ -41,8 +50,8 @@ class MultiCameraDangerDetection:
         self.frame_counts = {}  # 카메라별 프레임 카운트
         self.start_time = time.time()
         
-        # 스레드 풀
-        self.executor = ThreadPoolExecutor(max_workers=4)
+        # 스레드 풀 (다중 카메라용)
+        self.executor = ThreadPoolExecutor(max_workers=max(4, len(self.active_cameras)))
         
         # 시그널 핸들러
         signal.signal(signal.SIGINT, self.signal_handler)
@@ -80,10 +89,24 @@ class MultiCameraDangerDetection:
             print(f"❌ 모델 초기화 실패: {e}")
             return False
     
-    def connect_cameras(self):
-        """모든 카메라 연결"""
+    def connect_cameras(self, custom_url: Optional[str] = None):
+        """카메라 연결"""
+        # 커스텀 URL이 제공된 경우 첫 번째 카메라 URL 업데이트
+        if custom_url:
+            if self.active_cameras:
+                self.active_cameras[0]['url'] = custom_url
+            else:
+                self.active_cameras = [{
+                    'id': 1,
+                    'name': 'Custom Camera',
+                    'url': custom_url,
+                    'enabled': True,
+                    'position': (0, 0)
+                }]
+            print(f"커스텀 URL 사용: {custom_url}")
+        
         self.multi_camera_manager = MultiCameraManager(
-            CAMERAS,
+            self.active_cameras,
             self.alert_manager,
             VIDEO_CONFIG
         )
@@ -111,9 +134,11 @@ class MultiCameraDangerDetection:
                 for det in fire_detections:
                     if det['confidence'] >= DETECTION_CONFIG['fire_detection']['min_confidence']:
                         detections['fire'].append(det)
+                        # 단일 카메라 모드에서는 카메라 ID 표시 안 함
+                        alert_prefix = "" if self.is_single_camera else f"[카메라 {cam_id}] "
                         self.alert_manager.send_alert(
                             f'fire_cam{cam_id}',
-                            f"[카메라 {cam_id}] 화재 또는 연기 감지됨 - {det['class_name']}",
+                            f"{alert_prefix}화재 또는 연기 감지됨 - {det['class_name']}",
                             location={'x': det['bbox'][0], 'y': det['bbox'][1]},
                             confidence=det['confidence'],
                             cooldown=DETECTION_CONFIG['fire_detection']['alert_cooldown']
@@ -125,9 +150,10 @@ class MultiCameraDangerDetection:
                 for det in fall_detections:
                     if det['fall_confidence'] >= DETECTION_CONFIG['fall_detection']['min_confidence']:
                         detections['fall'].append(det)
+                        alert_prefix = "" if self.is_single_camera else f"[카메라 {cam_id}] "
                         self.alert_manager.send_alert(
                             f'fall_cam{cam_id}',
-                            f"[카메라 {cam_id}] 낙상 감지 - Person ID: {det.get('person_id', 'Unknown')}",
+                            f"{alert_prefix}낙상 감지 - Person ID: {det.get('person_id', 'Unknown')}",
                             location={'x': det['bbox'][0], 'y': det['bbox'][1]},
                             confidence=det['fall_confidence'],
                             cooldown=DETECTION_CONFIG['fall_detection']['alert_cooldown']
@@ -139,9 +165,10 @@ class MultiCameraDangerDetection:
                 for det in intrusion_detections:
                     if det['confidence'] >= DETECTION_CONFIG['restricted_area']['min_confidence']:
                         detections['restricted_area'].append(det)
+                        alert_prefix = "" if self.is_single_camera else f"[카메라 {cam_id}] "
                         self.alert_manager.send_alert(
                             f'restricted_cam{cam_id}',
-                            f"[카메라 {cam_id}] 제한구역 침입 감지 - Zone {det['zone_id']+1}",
+                            f"{alert_prefix}제한구역 침입 감지 - Zone {det['zone_id']+1}",
                             location={'x': det['bbox'][0], 'y': det['bbox'][1]},
                             confidence=det['confidence'],
                             cooldown=DETECTION_CONFIG['restricted_area']['alert_cooldown']
@@ -153,9 +180,10 @@ class MultiCameraDangerDetection:
                 for det in helmet_detections:
                     if det['class_name'] == 'no_helmet' and det['confidence'] >= DETECTION_CONFIG['helmet_detection']['min_confidence']:
                         detections['no_helmet'].append(det)
+                        alert_prefix = "" if self.is_single_camera else f"[카메라 {cam_id}] "
                         self.alert_manager.send_alert(
                             f'helmet_cam{cam_id}',
-                            f"[카메라 {cam_id}] 안전모 미착용 감지",
+                            f"{alert_prefix}안전모 미착용 감지",
                             location={'x': det['bbox'][0], 'y': det['bbox'][1]},
                             confidence=det['confidence'],
                             cooldown=DETECTION_CONFIG['helmet_detection']['alert_cooldown']
@@ -169,6 +197,10 @@ class MultiCameraDangerDetection:
     def visualize_detections_on_frame(self, frame: np.ndarray, detections: Dict) -> np.ndarray:
         """프레임에 감지 결과 시각화"""
         vis_frame = frame.copy()
+        
+        # 제한구역 표시 (단일 카메라 모드일 때만)
+        if self.is_single_camera and DETECTION_CONFIG['restricted_area']['enabled']:
+            vis_frame = self.safety_detector.visualize_zones(vis_frame)
         
         # 화재 감지 표시 (빨간색)
         for det in detections['fire']:
@@ -196,23 +228,70 @@ class MultiCameraDangerDetection:
         
         return vis_frame
     
+    def add_single_camera_overlay(self, frame: np.ndarray, cam_id: int):
+        """단일 카메라용 오버레이"""
+        height, width = frame.shape[:2]
+        
+        # 상단 정보 바
+        cv2.rectangle(frame, (0, 0), (width, 40), (0, 0, 0), -1)
+        
+        # FPS 정보
+        fps = self.multi_camera_manager.video_streams[cam_id].get_fps()
+        elapsed = time.time() - self.start_time
+        total_frames = self.frame_counts.get(cam_id, 0)
+        avg_fps = total_frames / elapsed if elapsed > 0 else 0
+        
+        info_text = f"FPS: {fps:.1f} (Avg: {avg_fps:.1f}) | "
+        info_text += f"Frame: {total_frames} | "
+        info_text += f"Time: {datetime.now().strftime('%H:%M:%S')}"
+        
+        cv2.putText(frame, info_text, (10, 25),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+        
+        # 통계 정보
+        stats = self.alert_manager.get_statistics()
+        if stats['total_alerts'] > 0:
+            # 하단 정보 바
+            cv2.rectangle(frame, (0, height-60), (width, height), (0, 0, 0), -1)
+            
+            alert_text = f"Total Alerts: {stats['total_alerts']} | "
+            for alert_type, count in stats['alert_breakdown'].items():
+                # 단일 카메라에서는 _cam1 접미사 제거
+                display_type = alert_type.replace('_cam1', '')
+                alert_text += f"{display_type}: {count} | "
+            
+            cv2.putText(frame, alert_text[:100], (10, height-35),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            
+            if stats['active_alerts']:
+                active_text = f"Active: {', '.join(stats['active_alerts'])}"
+                cv2.putText(frame, active_text, (10, height-10),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+    
     def run(self, display=True, save_output=False):
         """메인 실행 루프"""
-        print("\n다중 카메라 시스템 시작...")
-        print("종료: Ctrl+C | 스크린샷: S | 통계 리셋: R | 카메라 토글: 1-4\n")
+        if self.is_single_camera:
+            print("\n단일 카메라 시스템 시작...")
+            print("종료: Q | 스크린샷: S | 통계 리셋: R\n")
+        else:
+            print("\n다중 카메라 시스템 시작...")
+            print("종료: Q | 스크린샷: S | 통계 리셋: R | 카메라 토글: 1-4\n")
         
         # 비디오 저장 설정
         video_writer = None
         if save_output:
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            output_filename = f"multi_output_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
-            video_writer = cv2.VideoWriter(
-                output_filename,
-                fourcc,
-                20.0,
-                (self.multi_camera_manager.display_width, 
-                 self.multi_camera_manager.display_height)
-            )
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            
+            if self.is_single_camera:
+                output_filename = f"output_{timestamp}.mp4"
+                output_size = (VIDEO_CONFIG['resize_width'], VIDEO_CONFIG['resize_height'])
+            else:
+                output_filename = f"multi_output_{timestamp}.mp4"
+                output_size = (self.multi_camera_manager.display_width, 
+                             self.multi_camera_manager.display_height)
+            
+            video_writer = cv2.VideoWriter(output_filename, fourcc, 20.0, output_size)
             print(f"비디오 저장: {output_filename}")
         
         try:
@@ -257,31 +336,41 @@ class MultiCameraDangerDetection:
                     else:
                         visualized_frames[cam_id] = frame
                 
-                # 다중 뷰 생성
-                multi_view = self.multi_camera_manager.create_multi_view(
-                    visualized_frames, all_detections
-                )
+                # 디스플레이 처리
+                if self.is_single_camera:
+                    # 단일 카메라: 전체 화면 사용
+                    cam_id = list(visualized_frames.keys())[0]
+                    display_frame = visualized_frames[cam_id]
+                    self.add_single_camera_overlay(display_frame, cam_id)
+                else:
+                    # 다중 카메라: 그리드 뷰
+                    display_frame = self.multi_camera_manager.create_multi_view(
+                        visualized_frames, all_detections
+                    )
                 
                 if display:
-                    cv2.imshow('Multi-Camera Danger Detection', multi_view)
+                    window_name = 'CCTV Danger Detection' if self.is_single_camera else 'Multi-Camera Danger Detection'
+                    cv2.imshow(window_name, display_frame)
                     
                     # 키 입력 처리
                     key = cv2.waitKey(1) & 0xFF
-                    if key == ord('q'):
+                    if key == ord('q') or key == ord('Q'):
                         break
-                    elif key == ord('r'):
+                    elif key == ord('r') or key == ord('R'):
                         self.alert_manager.reset_statistics()
                         print("통계가 초기화되었습니다.")
-                    elif key == ord('s'):
-                        filename = f"multi_screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-                        cv2.imwrite(filename, multi_view)
+                    elif key == ord('s') or key == ord('S'):
+                        prefix = "screenshot" if self.is_single_camera else "multi_screenshot"
+                        filename = f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+                        cv2.imwrite(filename, display_frame)
                         print(f"스크린샷 저장: {filename}")
-                    elif ord('1') <= key <= ord('4'):
+                    elif not self.is_single_camera and ord('1') <= key <= ord('4'):
+                        # 다중 카메라 모드에서만 카메라 토글
                         cam_id = key - ord('0')
                         self.multi_camera_manager.toggle_camera(cam_id)
                 
                 if save_output and video_writer:
-                    video_writer.write(multi_view)
+                    video_writer.write(display_frame)
                 
                 # 주기적 상태 출력
                 total_frames = sum(self.frame_counts.values())
@@ -290,6 +379,8 @@ class MultiCameraDangerDetection:
                     
         except Exception as e:
             print(f"\n오류 발생: {e}")
+            import traceback
+            traceback.print_exc()
             
         finally:
             self.cleanup(video_writer)
@@ -300,10 +391,15 @@ class MultiCameraDangerDetection:
         active_cams = len(self.multi_camera_manager.video_streams)
         total_frames = sum(self.frame_counts.values())
         
-        print(f"\n[상태] 활성 카메라: {active_cams} | "
-              f"총 프레임: {total_frames} | "
-              f"총 알림: {stats['total_alerts']} | "
-              f"활성 알림: {len(stats['active_alerts'])}")
+        if self.is_single_camera:
+            print(f"\n[상태] 프레임: {total_frames} | "
+                  f"총 알림: {stats['total_alerts']} | "
+                  f"활성 알림: {len(stats['active_alerts'])}")
+        else:
+            print(f"\n[상태] 활성 카메라: {active_cams} | "
+                  f"총 프레임: {total_frames} | "
+                  f"총 알림: {stats['total_alerts']} | "
+                  f"활성 알림: {len(stats['active_alerts'])}")
     
     def cleanup(self, video_writer=None):
         """리소스 정리"""
@@ -329,12 +425,20 @@ class MultiCameraDangerDetection:
         if stats['alert_breakdown']:
             print("\n알림 유형별 통계:")
             for alert_type, count in stats['alert_breakdown'].items():
-                print(f"  - {alert_type}: {count}회")
+                if self.is_single_camera:
+                    # 단일 카메라에서는 _cam1 접미사 제거
+                    display_type = alert_type.replace('_cam1', '')
+                else:
+                    display_type = alert_type
+                print(f"  - {display_type}: {count}회")
         
         if self.frame_counts:
-            print("\n카메라별 프레임 수:")
-            for cam_id, count in self.frame_counts.items():
-                print(f"  - 카메라 {cam_id}: {count} 프레임")
+            if self.is_single_camera:
+                print(f"\n총 프레임 수: {total_frames}")
+            else:
+                print("\n카메라별 프레임 수:")
+                for cam_id, count in self.frame_counts.items():
+                    print(f"  - 카메라 {cam_id}: {count} 프레임")
         
         print("\n시스템이 안전하게 종료되었습니다.")
     
@@ -346,16 +450,18 @@ class MultiCameraDangerDetection:
 
 def main():
     """메인 함수"""
-    parser = argparse.ArgumentParser(description='CCTV 다중 카메라 위험 감지 시스템')
+    parser = argparse.ArgumentParser(description='CCTV 위험 감지 시스템')
     parser.add_argument('--no-display', action='store_true',
                        help='화면 표시 없이 실행')
     parser.add_argument('--save-output', action='store_true',
                        help='감지 결과를 비디오로 저장')
+    parser.add_argument('--rtsp-url', type=str,
+                       help='RTSP 스트림 URL (단일 카메라 모드)')
     
     args = parser.parse_args()
     
     # 시스템 초기화
-    system = MultiCameraDangerDetection()
+    system = DangerDetectionSystem()
     
     # 모델 초기화
     if not system.initialize_models():
@@ -363,7 +469,7 @@ def main():
         return
     
     # 카메라 연결
-    if not system.connect_cameras():
+    if not system.connect_cameras(custom_url=args.rtsp_url):
         print("카메라 연결 실패. 프로그램을 종료합니다.")
         return
     
