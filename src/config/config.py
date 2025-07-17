@@ -39,7 +39,7 @@ RTSP_URL = CAMERAS[0]['url']
 
 # 모델 설정
 MODEL_CONFIG = {
-    'yolo_model': 'yolov8m.pt',  # YOLOv8 중간, 균형잡힌 선택
+    'yolo_model': 'yolov8s.pt',  # YOLOv8m 중간, 균형잡힌 선택 (n,s,m.l)
     'confidence_threshold': 0.5,
     'iou_threshold': 0.45,
     'device': 'cuda:0',  # GPU 사용 (없으면 'cpu')
