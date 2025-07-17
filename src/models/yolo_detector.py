@@ -8,7 +8,7 @@ from typing import List, Dict, Tuple, Optional
 import cv2
 
 class YOLODetector:
-    def __init__(self, model_path: str = 'yolov8n.pt', 
+    def __init__(self, model_path: str = 'yolov8m.pt', 
                  device: str = 'cuda:0',
                  conf_threshold: float = 0.5,
                  iou_threshold: float = 0.45):

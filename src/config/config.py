@@ -39,7 +39,7 @@ RTSP_URL = CAMERAS[0]['url']
 
 # 모델 설정
 MODEL_CONFIG = {
-    'yolo_model': 'yolov8n.pt',  # YOLOv8 nano 모델 (빠른 처리)
+    'yolo_model': 'yolov8m.pt',  # YOLOv8 중간, 균형잡힌 선택
     'confidence_threshold': 0.5,
     'iou_threshold': 0.45,
     'device': 'cuda:0',  # GPU 사용 (없으면 'cpu')
@@ -77,7 +77,7 @@ DETECTION_CONFIG = {
 
 # 비디오 처리 설정
 VIDEO_CONFIG = {
-    'frame_skip': 2,  # 처리할 프레임 간격
+    'frame_skip': 1,  # 처리할 프레임 간격
     'resize_width': 640,
     'resize_height': 480,
     'buffer_size': 10,

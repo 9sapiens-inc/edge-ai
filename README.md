@@ -67,6 +67,11 @@ python main.py --rtsp-url "rtsp://your-camera-url"
 3. **해상도 조정**: `resize_width`, `resize_height` 값 변경
 4. **모델 선택**: 더 빠른 처리를 원하면 `yolov8n.pt` 사용
 
+- yolov8n.pt (현재) - 가장 빠름, 정확도 낮음
+- yolov8s.pt - 빠름, 정확도 향상
+- yolov8m.pt - 중간, 균형잡힌 선택
+- yolov8l.pt - 느림, 높은 정확도
+
 ## 추가 개선 사항
 
 실제 운영 환경에서는 다음 사항들을 추가로 구현하는 것을 권장합니다:
