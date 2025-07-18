@@ -49,17 +49,19 @@ MODEL_CONFIG = {
 }
 
 # 위험 감지 설정 - 더 민감하게 조정
+# config.py의 DETECTION_CONFIG 수정
 DETECTION_CONFIG = {
     'fire_detection': {
         'enabled': True,
-        'min_confidence': 0.5,
+        'min_confidence': 0.6,
+        'temporal_weight': 0.9,  # 시간적 분석 가중치 (0.9 = 90%)
+        'min_frames_for_smoke': 3,  # 연기 확정을 위한 최소 프레임
         'alert_cooldown': 30,
     },
     'restricted_area': {
         'enabled': True,
         'min_confidence': 0.7,
         'restricted_zones': [
-            # (x1, y1, x2, y2) 형식의 위험 구역 좌표
             (100, 100, 300, 300),
             (400, 200, 600, 400),
         ],
@@ -68,12 +70,12 @@ DETECTION_CONFIG = {
     'fall_detection': {
         'enabled': True,
         'min_confidence': 0.7,
-        'aspect_ratio_threshold': 1.5,  # 가로/세로 비율
+        'aspect_ratio_threshold': 1.5,
         'alert_cooldown': 20,
     },
     'helmet_detection': {
         'enabled': True,
-        'min_confidence': 0.5,
+        'min_confidence': 0.8,
         'alert_cooldown': 60,
     }
 }

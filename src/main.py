@@ -75,7 +75,17 @@ class DangerDetectionSystem:
             if os.path.exists(fire_model_path):
                 from models.fire_detector_yolo import FireDetectorYOLO
                 self.fire_detector = FireDetectorYOLO(fire_model_path)
+                
+                # 시간적 분석 가중치 설정
+                temporal_weight = DETECTION_CONFIG['fire_detection'].get('temporal_weight', 0.9)
+                self.fire_detector.set_temporal_weight(temporal_weight)
+                
+                # 디버그 모드 활성화 (선택사항)
+                self.fire_detector.set_debug_mode(True)
+                
                 print("✓ YOLOv8 화재 감지 전용 모델 로드 완료")
+                print(f"  - 시간적 분석 가중치: {temporal_weight}")
+                print(f"  - 모델 정보: {self.fire_detector.get_statistics()}")
             else:
                 from models.fire_detector import FireDetector
                 self.fire_detector = FireDetector(self.yolo_detector)

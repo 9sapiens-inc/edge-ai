@@ -32,7 +32,7 @@ class FireDetectorYOLO:
             'min_changed_ratio': 0.25,   # 최소 변화 픽셀 비율 (15%) - ROI(관심영역) 내 전체 픽셀의 p% 이상이 변해야 함
             'consistency_frames': 5,     # 일관성 확인 프레임 수 - 연기로 확정하기 위해 연속 7프레임 동안 일관된 패턴 필요
             'motion_variance_min': 30,   # 최소 모션 분산 (낮추면: 느리게 움직이는 연기도 감지, 높이면: 빠르게 움직이는 연기만 감지)
-            'temporal_score_weight': 0.7 # 시간적 점수 가중치 (낮추면: 주로 색상/모양으로 판단, 높이면: 주로 움직임으로 판단)
+            'temporal_score_weight': 0.9 # 시간적 점수 가중치 (낮추면: 주로 색상/모양으로 판단, 높이면: 주로 움직임으로 판단)
         }
         
         # 객체별 시간적 추적
@@ -139,8 +139,8 @@ class FireDetectorYOLO:
         
         roi = frame[y1:y2, x1:x2]
         
-        # 후보 ID 생성 (더 정밀하게 - 바운딩 박스 기반)
-        candidate_id = f"{x1}_{y1}_{x2}_{y2}"
+        # 후보 ID 생성 (IoU 기반 매칭)
+        candidate_id = self._find_matching_candidate(detection['bbox'])
         
         # 1. 기본 연기 특성 검증
         basic_score = self._check_basic_smoke_properties(roi)
@@ -328,11 +328,52 @@ class FireDetectorYOLO:
         """디버그 모드 설정"""
         self.debug_mode = enabled
         
+    def _find_matching_candidate(self, bbox: List[int]) -> str:
+        """기존 후보와 매칭되는지 확인"""
+        best_iou = 0
+        best_id = None
+        
+        for cand_id, candidate in self.smoke_candidates.items():
+            if 'bbox' in candidate:
+                iou = self._calculate_iou(bbox, candidate['bbox'])
+                if iou > 0.5 and iou > best_iou:  # 50% 이상 겹침
+                    best_iou = iou
+                    best_id = cand_id
+        
+        if best_id:
+            return best_id
+        else:
+            # 새로운 ID 생성
+            return f"{bbox[0]}_{bbox[1]}_{bbox[2]}_{bbox[3]}"
+    
+    def _calculate_iou(self, bbox1: List[int], bbox2: List[int]) -> float:
+        """두 바운딩 박스의 IoU 계산"""
+        x1 = max(bbox1[0], bbox2[0])
+        y1 = max(bbox1[1], bbox2[1])
+        x2 = min(bbox1[2], bbox2[2])
+        y2 = min(bbox1[3], bbox2[3])
+        
+        if x2 < x1 or y2 < y1:
+            return 0.0
+        
+        intersection = (x2 - x1) * (y2 - y1)
+        area1 = (bbox1[2] - bbox1[0]) * (bbox1[3] - bbox1[1])
+        area2 = (bbox2[2] - bbox2[0]) * (bbox2[3] - bbox2[1])
+        union = area1 + area2 - intersection
+        
+        return intersection / union if union > 0 else 0.0
+    
+    def set_temporal_weight(self, weight: float):
+        """시간적 분석 가중치 설정"""
+        self.temporal_analysis['temporal_score_weight'] = max(0.0, min(1.0, weight))
+        print(f"시간적 분석 가중치 설정: {self.temporal_analysis['temporal_score_weight']}")
+    
     def get_statistics(self) -> Dict:
         """통계 정보 반환"""
         return {
             'confidence_threshold': self.confidence_threshold,
             'temporal_params': self.temporal_analysis,
             'active_candidates': len(self.smoke_candidates),
-            'confirmed_smoke': sum(1 for c in self.smoke_candidates.values() if c['confirmed'])
+            'confirmed_smoke': sum(1 for c in self.smoke_candidates.values() if c.get('confirmed', False)),
+            'class_names': self.class_names
         }
