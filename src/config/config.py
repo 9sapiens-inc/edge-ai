@@ -53,7 +53,7 @@ MODEL_CONFIG = {
 DETECTION_CONFIG = {
     'fire_detection': {
         'enabled': True,
-        'min_confidence': 0.6,
+        'min_confidence': 0.3,
         'temporal_weight': 0.9,  # 시간적 분석 가중치 (0.9 = 90%)
         'min_frames_for_smoke': 3,  # 연기 확정을 위한 최소 프레임
         'alert_cooldown': 30,
