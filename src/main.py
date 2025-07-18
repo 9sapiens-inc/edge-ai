@@ -6,6 +6,7 @@ import time
 import argparse
 import signal
 import sys
+import os
 import numpy as np
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -41,10 +42,10 @@ class DangerDetectionSystem:
         self.multi_camera_manager = None
         
         # AI 모델
-        self.yolo_detector = None
-        self.fire_detector = None
-        self.fall_detector = None
-        self.safety_detector = None
+        self.yolo_detector = None        # 일반 객체 감지용 (사람, 차량 등)
+        self.fire_detector = None        # 화재 전용 모델
+        self.fall_detector = None        # 낙상 감지 (사람 감지 필요)
+        self.safety_detector = None      # 안전모 감지 (사람 감지 필요)
         
         # 통계
         self.frame_counts = {}  # 카메라별 프레임 카운트
@@ -69,8 +70,16 @@ class DangerDetectionSystem:
             print("✓ YOLO 모델 로드 완료")
             
             print("[2/4] 화재 감지 모듈 초기화 중...")
-            self.fire_detector = FireDetector(self.yolo_detector)
-            print("✓ 화재 감지 모듈 준비 완료")
+            # 전용 화재 감지 모델이 있는지 확인
+            fire_model_path = 'weights/fire_smoke_best.pt'
+            if os.path.exists(fire_model_path):
+                from models.fire_detector_yolo import FireDetectorYOLO
+                self.fire_detector = FireDetectorYOLO(fire_model_path)
+                print("✓ YOLOv8 화재 감지 전용 모델 로드 완료")
+            else:
+                from models.fire_detector import FireDetector
+                self.fire_detector = FireDetector(self.yolo_detector)
+                print("✓ 색상 기반 화재 감지 모듈 준비 완료")
             
             print("[3/4] 낙상 감지 모듈 초기화 중...")
             self.fall_detector = FallDetector(self.yolo_detector)
@@ -135,10 +144,22 @@ class DangerDetectionSystem:
                     if det['confidence'] >= DETECTION_CONFIG['fire_detection']['min_confidence']:
                         detections['fire'].append(det)
                         # 단일 카메라 모드에서는 카메라 ID 표시 안 함
+                        # 화재/연기 구분하여 알림
                         alert_prefix = "" if self.is_single_camera else f"[카메라 {cam_id}] "
+                        
+                        if det['class_name'] == 'Fire':
+                            alert_type = f'fire_cam{cam_id}'
+                            alert_message = f"{alert_prefix}화재 감지됨"
+                        elif det['class_name'] == 'Smoke':
+                            alert_type = f'smoke_cam{cam_id}'
+                            alert_message = f"{alert_prefix}연기 감지됨"
+                        else:
+                            alert_type = f'fire_cam{cam_id}'
+                            alert_message = f"{alert_prefix}{det['class_name']} 감지됨"
+                        
                         self.alert_manager.send_alert(
-                            f'fire_cam{cam_id}',
-                            f"{alert_prefix}화재 또는 연기 감지됨 - {det['class_name']}",
+                            alert_type,
+                            alert_message,
                             location={'x': det['bbox'][0], 'y': det['bbox'][1]},
                             confidence=det['confidence'],
                             cooldown=DETECTION_CONFIG['fire_detection']['alert_cooldown']

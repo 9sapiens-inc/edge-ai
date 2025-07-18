@@ -48,12 +48,12 @@ MODEL_CONFIG = {
     'device': 'cuda:0' if torch.cuda.is_available() else 'cpu',  # 자동 감지
 }
 
-# 위험 감지 설정
+# 위험 감지 설정 - 더 민감하게 조정
 DETECTION_CONFIG = {
     'fire_detection': {
         'enabled': True,
-        'min_confidence': 0.6,
-        'alert_cooldown': 30,  # 초 단위
+        'min_confidence': 0.6,  # 원래 값으로 복원
+        'alert_cooldown': 30,   # 원래 값으로 복원
     },
     'restricted_area': {
         'enabled': True,
@@ -67,28 +67,28 @@ DETECTION_CONFIG = {
     },
     'fall_detection': {
         'enabled': True,
-        'min_confidence': 0.65,
+        'min_confidence': 0.7,  # 0.65 → 0.7로 상향
         'aspect_ratio_threshold': 1.5,  # 가로/세로 비율
         'alert_cooldown': 20,
     },
     'helmet_detection': {
         'enabled': True,
-        'min_confidence': 0.7,
+        'min_confidence': 0.8,  # 0.7 → 0.8로 상향
         'alert_cooldown': 60,
     }
 }
 
 # 비디오 처리 설정
 VIDEO_CONFIG = {
-    'frame_skip': 3,  # GPU 사용 시 2, CPU 사용 시 3-5 권장
+    'frame_skip': 2,  # 2프레임마다 처리 (적당한 타협점)
     'resize_width': 640,
     'resize_height': 480,
-    'buffer_size': 5,  # 버퍼 크기 줄임
-    'reconnect_delay': 5,  # 재연결 대기 시간 (초)
-    'multi_camera_layout': 'grid',  # 'grid' 또는 'horizontal'
-    'grid_spacing': 10,  # 그리드 간격 (픽셀)
-    'display_width': 1920,  # 전체 디스플레이 너비
-    'display_height': 1080,  # 전체 디스플레이 높이
+    'buffer_size': 5,
+    'reconnect_delay': 5,
+    'multi_camera_layout': 'grid',
+    'grid_spacing': 10,
+    'display_width': 1920,
+    'display_height': 1080,
 }
 
 # 알림 설정

@@ -146,13 +146,30 @@ class SafetyDetector:
     
     def _detect_helmet_in_region(self, head_region: np.ndarray) -> Tuple[bool, str]:
         """
-        머리 영역에서 안전모 감지
+        머리 영역에서 안전모 감지 - 개선된 버전
         """
-        if head_region.size == 0:
+        if head_region.size == 0 or head_region.shape[0] < 10 or head_region.shape[1] < 10:
             return False, None
         
         # HSV 변환
         hsv = cv2.cvtColor(head_region, cv2.COLOR_BGR2HSV)
+        
+        # 피부색 감지 (안전모가 없는 경우)
+        skin_lower = np.array([0, 20, 70])
+        skin_upper = np.array([20, 150, 255])
+        skin_mask = cv2.inRange(hsv, skin_lower, skin_upper)
+        
+        # 머리카락 색상 감지
+        hair_lower = np.array([0, 0, 0])
+        hair_upper = np.array([180, 255, 50])
+        hair_mask = cv2.inRange(hsv, hair_lower, hair_upper)
+        
+        # 피부색이나 머리카락이 많이 보이면 안전모 미착용
+        skin_ratio = np.sum(skin_mask > 0) / (head_region.shape[0] * head_region.shape[1])
+        hair_ratio = np.sum(hair_mask > 0) / (head_region.shape[0] * head_region.shape[1])
+        
+        if skin_ratio > 0.3 or hair_ratio > 0.4:
+            return False, None
         
         # 각 안전모 색상에 대해 체크
         for color_name, (lower, upper) in self.helmet_colors.items():
@@ -163,46 +180,27 @@ class SafetyDetector:
             mask = cv2.inRange(hsv, lower, upper)
             
             # 노이즈 제거
-            kernel = np.ones((3, 3), np.uint8)
-            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+            kernel = np.ones((5, 5), np.uint8)
             mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
             
             # 안전모로 판단할 최소 픽셀 비율
             helmet_ratio = np.sum(mask > 0) / (head_region.shape[0] * head_region.shape[1])
             
-            if helmet_ratio > 0.2:  # 20% 이상이 안전모 색상
-                # 추가 검증: 원형 또는 타원형 체크
+            if helmet_ratio > 0.4:  # 40% 이상이 안전모 색상
+                # 추가 검증: 형태 분석
                 contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 
                 for contour in contours:
                     area = cv2.contourArea(contour)
-                    if area > 100:  # 최소 면적
+                    if area > head_region.shape[0] * head_region.shape[1] * 0.3:  # 충분히 큰 영역
                         # 원형도 체크
                         perimeter = cv2.arcLength(contour, True)
                         circularity = 4 * np.pi * area / (perimeter * perimeter) if perimeter > 0 else 0
                         
-                        if circularity > 0.5:  # 어느 정도 원형
+                        # 안전모는 둥근 형태
+                        if circularity > 0.6:
                             return True, color_name
-        
-        # 추가: 형태 기반 감지 (색상 없이)
-        # 엣지 검출
-        gray = cv2.cvtColor(head_region, cv2.COLOR_BGR2GRAY)
-        edges = cv2.Canny(gray, 50, 150)
-        
-        # 원형 검출 (Hough 변환)
-        circles = cv2.HoughCircles(
-            gray,
-            cv2.HOUGH_GRADIENT,
-            dp=1,
-            minDist=20,
-            param1=50,
-            param2=30,
-            minRadius=10,
-            maxRadius=50
-        )
-        
-        if circles is not None and len(circles[0]) > 0:
-            return True, 'unknown'
         
         return False, None
     
