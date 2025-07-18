@@ -52,8 +52,8 @@ MODEL_CONFIG = {
 DETECTION_CONFIG = {
     'fire_detection': {
         'enabled': True,
-        'min_confidence': 0.6,  # 원래 값으로 복원
-        'alert_cooldown': 30,   # 원래 값으로 복원
+        'min_confidence': 0.3,
+        'alert_cooldown': 30,
     },
     'restricted_area': {
         'enabled': True,
@@ -67,13 +67,13 @@ DETECTION_CONFIG = {
     },
     'fall_detection': {
         'enabled': True,
-        'min_confidence': 0.7,  # 0.65 → 0.7로 상향
+        'min_confidence': 0.7,
         'aspect_ratio_threshold': 1.5,  # 가로/세로 비율
         'alert_cooldown': 20,
     },
     'helmet_detection': {
         'enabled': True,
-        'min_confidence': 0.8,  # 0.7 → 0.8로 상향
+        'min_confidence': 0.5,
         'alert_cooldown': 60,
     }
 }
