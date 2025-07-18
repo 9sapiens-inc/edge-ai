@@ -223,11 +223,18 @@ class DangerDetectionSystem:
         if self.is_single_camera and DETECTION_CONFIG['restricted_area']['enabled']:
             vis_frame = self.safety_detector.visualize_zones(vis_frame)
         
-        # 화재 감지 표시 (빨간색)
+        # 화재/연기 감지 표시 - Fire와 Smoke 구분
         for det in detections['fire']:
-            vis_frame = self.yolo_detector.draw_detections(
-                vis_frame, [det], color=(0, 0, 255), thickness=3
-            )
+            if det.get('class_name') == 'Smoke':
+                # 연기는 주황색으로 표시
+                vis_frame = self.yolo_detector.draw_detections(
+                    vis_frame, [det], color=(0, 165, 255), thickness=3  # 주황색
+                )
+            else:
+                # 화재는 빨간색으로 표시
+                vis_frame = self.yolo_detector.draw_detections(
+                    vis_frame, [det], color=(0, 0, 255), thickness=3  # 빨간색
+                )
         
         # 낙상 감지 표시 (파란색)
         for det in detections['fall']:

@@ -52,7 +52,7 @@ MODEL_CONFIG = {
 DETECTION_CONFIG = {
     'fire_detection': {
         'enabled': True,
-        'min_confidence': 0.3,
+        'min_confidence': 0.5,
         'alert_cooldown': 30,
     },
     'restricted_area': {
